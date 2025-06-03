@@ -6,19 +6,16 @@
 
     apt update
     apt install -y certbot openssh-client
-
     systemctl stop haproxy
-
     # Obtener certificado
     certbot certonly --standalone --non-interactive --agree-tos --email $EMAIL -d $DOMAIN
-
     # Combinar .pem
     mkdir -p /etc/haproxy/certs
     cat /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/letsencrypt/live/$DOMAIN/privkey.pem > /etc/haproxy/certs/$DOMAIN.pem
     chmod 600 /etc/haproxy/certs/$DOMAIN.pem
-
+    rm -r /etc/haproxy/haproxy.cfg
     # Configurar HAProxy
-    cat > /etc/haproxy/haproxy.cfg <<EOF
+    cat << 'EOF' > /etc/haproxy/haproxy.cfg
     global
         log /dev/log local0
         log /dev/log local1 notice
@@ -46,7 +43,7 @@
         server web1 10.215.20.100:443 ssl verify none check
         server web2 10.215.20.101:443 ssl verify none check
     EOF
-
+    
     systemctl enable haproxy
     systemctl restart haproxy
 
