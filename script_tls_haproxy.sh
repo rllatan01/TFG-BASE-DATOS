@@ -15,7 +15,7 @@ cat /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/letsencrypt/live/$DOMAIN/pr
 chmod 600 /etc/haproxy/certs/$DOMAIN.pem
 rm -r /etc/haproxy/haproxy.cfg
 # Configurar HAProxy
-cat << 'EOF' > /etc/haproxy/haproxy.cfg
+cat << EOF > /etc/haproxy/haproxy.cfg
 global
     log /dev/log local0
     log /dev/log local1 notice
