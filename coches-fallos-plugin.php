@@ -70,9 +70,12 @@ function cfm_insert_form_shortcode() {
       </select><br><br>
 
       <label>Descripción del fallo:</label><br>
-      <textarea id="cfm_descripcion" name="descripcion" rows="4" required></textarea><br><br>
+      <textarea id="cfm_descripcion" name="fallo" rows="4" required></textarea><br><br>
 
-      <button type="submit">Enviar fallo</button>
+      
+      <label>Solución:</label><br>
+      <textarea id="cfm_solucion" name="solucion" rows="4" required></textarea><br><br>
+    <button type="submit">Enviar fallo</button>
     </form>
 
     <div id="cfm_insert_result"></div>
@@ -121,7 +124,37 @@ function cfm_insert_form_shortcode() {
     </script>
     <?php
     $conn->close();
-    return ob_get_clean();
+    
+    
+
+
+    <div id="cfm_success_msg" style="display:none; color: green; font-weight: bold;">
+      ¡Fallo insertado correctamente!
+    </div>
+
+    <script>
+    jQuery(document).ready(function($) {
+      $('#cfm_insert_form').on('submit', function(e) {
+        e.preventDefault();
+
+        $.ajax({
+          url: ajaxurl,
+          type: 'POST',
+          data: $(this).serialize() + '&action=cfm_insert_fallo',
+          success: function(response) {
+            if (response === 'success') {
+              $('#cfm_insert_form').hide();
+              $('#cfm_success_msg').show();
+            } else {
+              alert('Error al insertar el fallo.');
+            }
+          }
+        });
+      });
+    });
+    </script>
+
+return ob_get_clean();
 }
 
 // AJAX: carga de modelos
@@ -272,5 +305,70 @@ function cfm_view_fallos_shortcode() {
     </script>
     <?php
     $conn->close();
-    return ob_get_clean();
+    
+    
+
+
+    <div id="cfm_success_msg" style="display:none; color: green; font-weight: bold;">
+      ¡Fallo insertado correctamente!
+    </div>
+
+    <script>
+    jQuery(document).ready(function($) {
+      $('#cfm_insert_form').on('submit', function(e) {
+        e.preventDefault();
+
+        $.ajax({
+          url: ajaxurl,
+          type: 'POST',
+          data: $(this).serialize() + '&action=cfm_insert_fallo',
+          success: function(response) {
+            if (response === 'success') {
+              $('#cfm_insert_form').hide();
+              $('#cfm_success_msg').show();
+            } else {
+              alert('Error al insertar el fallo.');
+            }
+          }
+        });
+      });
+    });
+    </script>
+
+return ob_get_clean();
 }
+
+add_action('wp_ajax_cfm_insert_fallo', 'cfm_procesar_fallo');
+add_action('wp_ajax_nopriv_cfm_insert_fallo', 'cfm_procesar_fallo');
+
+function cfm_procesar_fallo() {
+    $conn = cfm_conectar();
+    if ( ! $conn ) {
+        echo 'error';
+        wp_die();
+    }
+
+    $marca  = $_POST['marca'];
+    $modelo = $_POST['modelo'];
+    $anio   = $_POST['anio'];
+    $fallo  = $_POST['fallo'];
+    $soluc  = $_POST['solucion'];
+
+    $stmt = $conn->prepare("INSERT INTO fallos (marca_id, modelo_id, año, descripcion, solucion) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("iisss", $marca, $modelo, $anio, $fallo, $soluc);
+
+    if ($stmt->execute()) {
+        echo 'success';
+    } else {
+        echo 'error';
+    }
+
+    $stmt->close();
+    $conn->close();
+    wp_die();
+}
+
+
+add_action('wp_head', function() {
+    echo '<script type="text/javascript">var ajaxurl = "' . admin_url('admin-ajax.php') . '";</script>';
+});
