@@ -36,13 +36,13 @@ function cfm_conectar() {
 add_shortcode( 'insertar_fallo_coches', 'cfm_insert_form_shortcode' );
 function cfm_insert_form_shortcode() {
     $conn = cfm_conectar();
-    if ( ! $conn ) return '<p><strong>Error:</strong> no se pudo conectar a la base de datos.</p>';
+    if ( ! \$conn ) return '<p><strong>Error:</strong> no se pudo conectar a la base de datos.</p>';
 
     // Marcas y años
-    $marcas = $conn->query("SELECT id, nombre FROM marcas ORDER BY nombre");
-    $anios  = $conn->query("SELECT año FROM años_fabricacion ORDER BY año DESC");
+    \$marcas = \$conn->query("SELECT id, nombre FROM marcas ORDER BY nombre");
+    \$anios  = \$conn->query("SELECT año FROM años_fabricacion ORDER BY año DESC");
 
-    ob_start(); ?>
+    <?php ob_start(); ?>
     <form id="cfm_insert_form">
       <label>Marca:</label><br>
       <select id="cfm_marca" name="marca" required>
@@ -70,63 +70,13 @@ function cfm_insert_form_shortcode() {
       </select><br><br>
 
       <label>Descripción del fallo:</label><br>
-      <textarea id="cfm_descripcion" name="fallo" rows="4" required></textarea><br><br>
+      <textarea id="cfm_fallo" name="fallo" rows="4" required></textarea><br><br>
 
-      
       <label>Solución:</label><br>
       <textarea id="cfm_solucion" name="solucion" rows="4" required></textarea><br><br>
-    <button type="submit">Enviar fallo</button>
+
+      <button type="submit">Enviar fallo</button>
     </form>
-
-    <div id="cfm_insert_result"></div>
-
-    <script>
-    jQuery(function($){
-      // Cargar modelos al cambiar marca
-      $('#cfm_marca').on('change', function(){
-        var mid = $(this).val();
-        $('#cfm_modelo')
-          .prop('disabled', true)
-          .html('<option>Cargando…</option>');
-        if (!mid) {
-          $('#cfm_modelo')
-            .html('<option value="">--Selecciona Modelo--</option>');
-          return;
-        }
-        $.post('<?php echo admin_url("admin-ajax.php"); ?>', {
-          action:   'cfm_cargar_modelos',
-          marca_id: mid
-        }, function(data){
-          $('#cfm_modelo')
-            .html(data)
-            .prop('disabled', false);
-        });
-      });
-
-      // Enviar fallo via AJAX
-      $('#cfm_insert_form').on('submit', function(e){
-        e.preventDefault();
-        var data = {
-          action:      'cfm_insertar_fallo',
-          marca_id:    $('#cfm_marca').val(),
-          modelo_id:   $('#cfm_modelo').val(),
-          anio:        $('#cfm_anio').val(),
-          descripcion: $('#cfm_descripcion').val()
-        };
-        $.post('<?php echo admin_url("admin-ajax.php"); ?>', data, function(resp){
-          $('#cfm_insert_result').html(resp);
-          $('#cfm_insert_form')[0].reset();
-          $('#cfm_modelo').prop('disabled', true)
-                          .html('<option value="">--Selecciona Modelo--</option>');
-        });
-      });
-    });
-    </script>
-    <?php
-    $conn->close();
-    
-    
-
 
     <div id="cfm_success_msg" style="display:none; color: green; font-weight: bold;">
       ¡Fallo insertado correctamente!
@@ -153,8 +103,8 @@ function cfm_insert_form_shortcode() {
       });
     });
     </script>
+    <?php return ob_get_clean(); ?>
 
-return ob_get_clean();
 }
 
 // AJAX: carga de modelos
