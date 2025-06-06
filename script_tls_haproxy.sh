@@ -45,12 +45,12 @@ backend wordpress_backend
     
 EOF
     
-systemctl enable haproxy
-systemctl restart haproxy
-
 # Copiar certificados a los servidores Apache usando la clave generada
 for ip in "${APACHE_IPS[@]}"; do
   echo "Copiando certificados a $ip..."
   scp -i /home/ubuntu/vockey.pem /etc/letsencrypt/live/$DOMAIN/fullchain.pem ubuntu@$ip:/tmp/
   scp -i /home/ubuntu/vockey.pem /etc/letsencrypt/live/$DOMAIN/privkey.pem ubuntu@$ip:/tmp/
 done
+
+systemctl enable haproxy
+systemctl restart haproxy

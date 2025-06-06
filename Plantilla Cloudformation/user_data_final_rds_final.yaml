@@ -1,0 +1,498 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Infraestructura completa con VPC, Subredes, NAT, RDS 'coches', HAProxy (balanceo) y dos WordPress
+
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Nombre del par de claves SSH (sin .pem)
+    Default: vockey
+
+Resources:
+  # VPC & Networking
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.215.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.215.10.0/24
+      MapPublicIpOnLaunch: true
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.215.20.0/24
+      MapPublicIpOnLaunch: false
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: us-east-1d
+      CidrBlock: 10.215.21.0/24
+      MapPublicIpOnLaunch: false
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  NatEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+      SubnetId: !Ref PublicSubnet
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  PrivateSubnetRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Security Groups
+  PublicSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public access SG
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+
+  PrivateSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private access SG
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.215.0.0/16
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.215.0.0/16
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.215.0.0/16
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 10.215.0.0/16
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          CidrIp: 10.215.0.0/16
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          CidrIp: 10.215.0.0/16
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 10.215.0.0/16
+
+
+  # RDS Subnet Group & Database
+
+  PrivateSubnetAZ1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: us-east-1a
+      CidrBlock: 10.215.22.0/24
+      MapPublicIpOnLaunch: false
+
+  PrivateSubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: us-east-1d
+      CidrBlock: 10.215.23.0/24
+      MapPublicIpOnLaunch: false
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for RDS
+      SubnetIds:
+        - !Ref PrivateSubnetAZ1
+        - !Ref PrivateSubnetAZ2
+
+  MyDBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: "Parametros personalizados para MySQL"
+      Family: "mysql8.0"
+      Parameters:
+        max_allowed_packet: "1073741824"
+        net_read_timeout: "600"
+        net_write_timeout: "600"
+        wait_timeout: "600"
+        connect_timeout: "60"
+
+  CochesRDS:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: coches-db
+      DBInstanceClass: db.t4g.medium
+      AllocatedStorage: 20
+      Engine: mysql
+      EngineVersion: '8.0'
+      MasterUsername: coches
+      MasterUserPassword: Admin123
+      DBName: coches
+      VPCSecurityGroups:
+        - !Ref PrivateSG
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      DBParameterGroupName: !Ref MyDBParameterGroup
+
+
+  WordpressRDS:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: wordpress-db
+      DBInstanceClass: db.t4g.medium
+      AllocatedStorage: 20
+      Engine: mysql
+      EngineVersion: '8.0'
+      MasterUsername: wordpress
+      MasterUserPassword: Admin123
+      DBName: wordpress
+      VPCSecurityGroups:
+        - !Ref PrivateSG
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+
+  # EC2 Instances
+  MonitorizacionInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-053b0d53c279acc90
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PublicSubnet
+      PrivateIpAddress: 10.215.10.102
+      SecurityGroupIds:
+        - !Ref PublicSG
+      Tags:
+        - Key: Name
+          Value: Grafana
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # === Crear usuario para Prometheus ===
+          useradd --no-create-home --shell /bin/false prometheus
+
+          # === Descargar Prometheus ===
+          cd /tmp
+          wget https://github.com/prometheus/prometheus/releases/download/v2.51.0/prometheus-2.51.0.linux-amd64.tar.gz
+          tar -xvzf prometheus-2.51.0.linux-amd64.tar.gz
+          cd prometheus-2.51.0.linux-amd64
+
+          # === Instalar binarios y carpetas ===
+          mv prometheus /usr/local/bin/
+          mv promtool /usr/local/bin/
+          mkdir -p /etc/prometheus /var/lib/prometheus
+          cp -r consoles /etc/prometheus
+          cp -r console_libraries /etc/prometheus
+
+          # === Crear archivo de configuración Prometheus ===
+          cat <<EOF | tee /etc/prometheus/prometheus.yml
+          global:
+            scrape_interval: 15s
+
+          scrape_configs:
+            - job_name: 'instancia_1'
+              static_configs:
+                - targets: ['10.215.20.100:9100']
+            - job_name: 'instancia_2'
+              static_configs:
+                - targets: ['10.215.20.101:9100']
+          EOF
+
+          # === Asignar permisos ===
+          chown -R prometheus:prometheus /etc/prometheus /var/lib/prometheus
+
+          # === Crear servicio systemd para Prometheus ===
+          cat <<EOF | tee /etc/systemd/system/prometheus.service
+          [Unit]
+          Description=Prometheus Monitoring
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User=prometheus
+          ExecStart=/usr/local/bin/prometheus \\
+            --config.file=/etc/prometheus/prometheus.yml \\
+            --storage.tsdb.path=/var/lib/prometheus \\
+            --web.console.templates=/etc/prometheus/consoles \\
+            --web.console.libraries=/etc/prometheus/console_libraries
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          # === Iniciar Prometheus ===
+          systemctl daemon-reexec
+          systemctl daemon-reload
+          systemctl start prometheus
+          systemctl enable prometheus
+          
+          # === Instalar Grafana OSS ===
+          apt-get install -y software-properties-common
+          add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
+          wget -q -O - https://packages.grafana.com/gpg.key | apt-key add -
+          apt-get update
+          apt-get install -y grafana
+          
+          # === Iniciar Grafana ===
+          systemctl start grafana-server
+          systemctl enable grafana-server
+
+
+  HAProxyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-053b0d53c279acc90
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PublicSubnet
+      PrivateIpAddress: 10.215.10.101
+      SecurityGroupIds:
+        - !Ref PublicSG
+      Tags:
+        - Key: Name
+          Value: HAProxy
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update
+          apt-get install -y haproxy zabbix-agent
+          cat << 'EOF' > /etc/haproxy/haproxy.cfg
+          global
+              log /dev/log local0
+              log /dev/log local1 notice
+              daemon
+              maxconn 2048
+
+          defaults
+              mode http
+              option httplog
+              timeout connect 5s
+              timeout client  50s
+              timeout server  50s
+
+          frontend http_front
+              bind *:80
+              default_backend wordpress_backend
+
+          backend wordpress_backend
+              balance roundrobin
+              server web1 10.215.20.100:80 check
+              server web2 10.215.20.101:80 check
+          EOF
+          systemctl restart haproxy
+          systemctl enable haproxy
+          cd /home/ubuntu
+          git clone https://github.com/rllatan01/TFG-BASE-DATOS
+
+  WebInstance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-053b0d53c279acc90
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PrivateSubnet
+      PrivateIpAddress: 10.215.20.100
+      SecurityGroupIds:
+        - !Ref PrivateSG
+      Tags:
+        - Key: Name
+          Value: WebInstance1
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update
+          apt-get install -y apache2 php php-mysql mysql-client wget unzip zabbix-agent zip
+          cd /var/www/html
+          rm index.html || true
+          wget https://wordpress.org/latest.zip
+          unzip latest.zip
+          cp -r wordpress/* .
+          rm -rf wordpress latest.zip
+          chown -R www-data:www-data /var/www/html
+          chmod -R 755 /var/www/html
+          cp wp-config-sample.php wp-config.php
+          sed -i "s/localhost/${WordpressRDS.Endpoint.Address}/" wp-config.php
+          sed -i "s/database_name_here/wordpress/" wp-config.php
+          sed -i "s/username_here/wordpress/" wp-config.php
+          sed -i "s/password_here/Admin123/" wp-config.php
+          systemctl restart apache2
+          systemctl enable apache2
+          apt-get update -y && apt-get upgrade -y
+          useradd --no-create-home --shell /bin/false node_exporter
+          cd /tmp
+          wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+          tar -xvzf node_exporter-1.7.0.linux-amd64.tar.gz
+          cp node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+          chown node_exporter:node_exporter /usr/local/bin/node_exporter
+          cat << 'EOF' > /etc/systemd/system/node_exporter.service
+          [Unit]
+          Description=Node Exporter
+          After=network.target
+
+          [Service]
+          User=node_exporter
+          ExecStart=/usr/local/bin/node_exporter
+
+          [Install]
+          WantedBy=default.target
+          EOF
+          
+          systemctl daemon-reexec
+          systemctl daemon-reload
+          systemctl enable node_exporter
+          systemctl start node_exporter
+          cd /home/ubuntu
+          git clone https://github.com/rllatan01/TFG-BASE-DATOS
+          cd TFG-BASE-DATOS
+          mysql -h '${CochesRDS.Endpoint.Address}' -u coches -pAdmin123 < ./coches_fallos_final_separado.sql
+          
+  WebInstance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-053b0d53c279acc90
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PrivateSubnet
+      PrivateIpAddress: 10.215.20.101
+      SecurityGroupIds:
+        - !Ref PrivateSG
+      Tags:
+        - Key: Name
+          Value: WebInstance2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update
+          apt-get install -y apache2 php php-mysql mysql-client wget unzip zabbix-agent zip
+          cd /var/www/html
+          rm index.html || true
+          wget https://wordpress.org/latest.zip
+          unzip latest.zip
+          cp -r wordpress/* .
+          rm -rf wordpress latest.zip
+          chown -R www-data:www-data /var/www/html
+          chmod -R 755 /var/www/html
+          cp wp-config-sample.php wp-config.php
+          sed -i "s/localhost/${WordpressRDS.Endpoint.Address}/" wp-config.php
+          sed -i "s/database_name_here/wordpress/" wp-config.php
+          sed -i "s/username_here/wordpress/" wp-config.php
+          sed -i "s/password_here/Admin123/" wp-config.php
+          systemctl restart apache2
+          systemctl enable apache2
+          cd /home/ubuntu
+          git clone https://github.com/rllatan01/TFG-BASE-DATOS
+          apt-get update -y && apt-get upgrade -y
+          useradd --no-create-home --shell /bin/false node_exporter
+          cd /tmp
+          wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+          tar -xvzf node_exporter-1.7.0.linux-amd64.tar.gz
+          cp node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+          chown node_exporter:node_exporter /usr/local/bin/node_exporter
+          cat << 'EOF' > /etc/systemd/system/node_exporter.service
+          [Unit]
+          Description=Node Exporter
+          After=network.target
+
+          [Service]
+          User=node_exporter
+          ExecStart=/usr/local/bin/node_exporter
+
+          [Install]
+          WantedBy=default.target
+          EOF
+          
+          systemctl daemon-reexec
+          systemctl daemon-reload
+          systemctl enable node_exporter
+          systemctl start node_exporter
+
+Outputs:
+  HAProxyPublicIP:
+    Description: IP pública del HAProxy
+    Value: !GetAtt HAProxyInstance.PublicIp
