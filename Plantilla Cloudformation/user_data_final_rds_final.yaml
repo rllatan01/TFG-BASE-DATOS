@@ -5,7 +5,7 @@ Parameters:
   KeyPairName:
     Type: AWS::EC2::KeyPair::KeyName
     Description: Nombre del par de claves SSH (sin .pem)
-    Default: vockey
+    Default: rufinollata
 
 Resources:
   # VPC & Networking
@@ -341,7 +341,7 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           apt-get update
-          apt-get install -y haproxy zabbix-agent
+          apt-get install -y haproxy
           cat << 'EOF' > /etc/haproxy/haproxy.cfg
           global
               log /dev/log local0

@@ -177,7 +177,7 @@ function cfm_insertar_fallo() {
 }
 
 /**
- * 3) Shortcode de visualización de fallos
+ * 3) Shortcode de visualizacion de fallos
  */
 add_shortcode( 'ver_fallos_coches', 'cfm_view_fallos_shortcode' );
 function cfm_view_fallos_shortcode() {
